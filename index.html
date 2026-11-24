@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Energy Monitor</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: Arial, sans-serif;
+      background: #0a0a0a;
+      color: white;
+      padding: 12px;
+    }
+    h1 {
+      text-align: center;
+      color: #00ff88;
+      font-size: 1.3em;
+      margin-bottom: 12px;
+      letter-spacing: 1px;
+    }
+    .cards {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+    .card {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 10px;
+      padding: 12px 20px;
+      text-align: center;
+      min-width: 130px;
+    }
+    .card p {
+      color: #777;
+      font-size: 0.72em;
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .card h2 {
+      color: #00ff88;
+      font-size: 1.4em;
+    }
+    .card.warn h2 { color: #ffd166; }
+    .chart-box {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 10px;
+      padding: 14px;
+    }
+    #status {
+      text-align: center;
+      color: #555;
+      font-size: 0.75em;
+      margin-bottom: 8px;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>⚡ Energy Monitor Dashboard</h1>
+
+  <div class="cards">
+    <div class="card">
+      <p>Live Current</p>
+      <h2 id="current">--</h2>
+      <p>Amperes</p>
+    </div>
+    <div class="card">
+      <p>Live Power</p>
+      <h2 id="power">--</h2>
+      <p>Watts</p>
+    </div>
+    <div class="card warn">
+      <p>Est. Cost</p>
+      <h2 id="cost">--</h2>
+      <p>₹ Today</p>
+    </div>
+    <div class="card">
+      <p>Total Readings</p>
+      <h2 id="count">--</h2>
+      <p>Samples</p>
+    </div>
+  </div>
+
+  <div class="chart-box">
+    <div id="status">Loading data...</div>
+    <canvas id="powerChart" height="140"></canvas>
+  </div>
+
+  <script>
+    const ctx = document.getElementById('powerChart').getContext('2d');
+    const chart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [{
+          label: 'Power (W)',
+          data: [],
+          borderColor: '#00ff88',
+          backgroundColor: 'rgba(0,255,136,0.06)',
+          tension: 0.3,
+          fill: true,
+          pointRadius: 2,
+          pointBackgroundColor: '#00ff88',
+          borderWidth: 2
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        animation: { duration: 300 },
+        scales: {
+          x: {
+            ticks: {
+              color: '#888',
+              font: { size: 10 },
+              maxTicksLimit: 8,
+              maxRotation: 0
+            },
+            grid: { color: '#222' }
+          },
+          y: {
+            beginAtZero: true,
+            
+            ticks: {
+              color: '#888',
+              font: { size: 11 }
+            },
+            grid: { color: '#222' },
+            title: {
+              display: true,
+              text: 'Power (Watts)',
+              color: '#888',
+              font: { size: 11 }
+            }
+          }
+        },
+        plugins: {
+          legend: {
+            labels: {
+              color: '#aaa',
+              font: { size: 11 }
+            }
+          }
+        }
+      }
+    });
+
+    async function loadCSV() {
+      try {
+        const response = await fetch('http://localhost:8000/data/readings.csv');
+        const text = await response.text();
+        const lines = text.trim().split('\n');
+
+        if (lines.length < 2) {
+          document.getElementById('status').textContent = 'No data yet.';
+          return;
+        }
+
+        const dataLines = lines.slice(1).slice(-30);
+        const labels = [];
+        const powers = [];
+        let lastCurrent = 0;
+        let lastPower = 0;
+        let totalEnergy = 0;
+
+        dataLines.forEach(line => {
+          const parts = line.split(',');
+          if (parts.length === 3) {
+            labels.push(parts[0].slice(11, 19));
+            const p = parseFloat(parts[2]);
+            powers.push(p);
+            lastCurrent = parseFloat(parts[1]);
+            lastPower = p;
+            totalEnergy += (p * (0.5 / 3600)) / 1000;
+          }
+        });
+
+        document.getElementById('current').textContent = lastCurrent.toFixed(3) + 'A';
+        document.getElementById('power').textContent = lastPower.toFixed(1) + 'W';
+        document.getElementById('count').textContent = lines.length - 1;
+        document.getElementById('cost').textContent = '₹' + (totalEnergy * 8).toFixed(4);
+        document.getElementById('status').textContent =
+          'Last updated: ' + new Date().toLocaleTimeString();
+
+        chart.data.labels = labels;
+        chart.data.datasets[0].data = powers;
+        chart.update();
+
+      } catch(e) {
+        document.getElementById('status').textContent = 'Error: Is http.server running?';
+      }
+    }
+
+    loadCSV();
+    setInterval(loadCSV, 2000);
+  </script>
+
+</body>
+</html>
